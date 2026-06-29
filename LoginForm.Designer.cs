@@ -17,6 +17,7 @@ partial class LoginForm
     private TextBox txtPassword;
     private Label lblEye;
     private Label lblError;
+    private CheckBox chkIntegrated;
     private TableLayoutPanel btnRow;
     private Button btnConfig;
     private Button btnExit;
@@ -45,7 +46,7 @@ partial class LoginForm
         MinimizeBox     = false;
         Font            = new Font("Segoe UI", 9.5f);
         BackColor       = Color.White;
-        ClientSize      = new Size(470, 400);
+        ClientSize      = new Size(470, 440);
 
         // ── root table ────────────────────────────────────────────────────────
         root = new TableLayoutPanel
@@ -73,6 +74,19 @@ partial class LoginForm
         lblServerValue = new Label { Text = "",        AutoSize = true, ForeColor = Color.DimGray, Anchor = AnchorStyles.Left, Margin = new Padding(0, 3, 0, 3) };
         lblDomainLabel = new Label { Text = "Domain:", AutoSize = true, ForeColor = Color.Gray,    Anchor = AnchorStyles.Left, Margin = new Padding(0, 3, 10, 10) };
         lblDomainValue = new Label { Text = "",        AutoSize = true, ForeColor = Color.DimGray, Anchor = AnchorStyles.Left, Margin = new Padding(0, 3, 0, 10), Font = new Font("Segoe UI", 9.5f, FontStyle.Bold) };
+
+        // ── SSO checkbox ──────────────────────────────────────────────────────
+        chkIntegrated = new CheckBox
+        {
+            Text      = "Use my current Windows sign-in  (Single Sign-On)",
+            AutoSize  = true,
+            Checked   = true,
+            Font      = new Font("Segoe UI", 9.5f),
+            ForeColor = brandBlue,
+            Margin    = new Padding(0, 10, 0, 6),
+            Cursor    = Cursors.Hand,
+        };
+        chkIntegrated.CheckedChanged += chkIntegrated_CheckedChanged;
 
         // ── username ──────────────────────────────────────────────────────────
         lblUsernameLabel = new Label { Text = "Username", AutoSize = true, Margin = new Padding(0, 4, 0, 2) };
@@ -191,15 +205,16 @@ partial class LoginForm
         btnRow.Controls.Add(btnConnect, 3, 0);
 
         // ── assemble rows ─────────────────────────────────────────────────────
-        root.Controls.Add(lblTitle, 0, 0);        root.SetColumnSpan(lblTitle, 2);
-        root.Controls.Add(lblServerLabel, 0, 1);  root.Controls.Add(lblServerValue, 1, 1);
-        root.Controls.Add(lblDomainLabel, 0, 2);  root.Controls.Add(lblDomainValue, 1, 2);
-        root.Controls.Add(lblUsernameLabel, 0, 3); root.SetColumnSpan(lblUsernameLabel, 2);
-        root.Controls.Add(txtUsername, 0, 4);      root.SetColumnSpan(txtUsername, 2);
-        root.Controls.Add(lblPasswordLabel, 0, 5); root.SetColumnSpan(lblPasswordLabel, 2);
-        root.Controls.Add(pwRow, 0, 6);            root.SetColumnSpan(pwRow, 2);
-        root.Controls.Add(lblError, 0, 7);         root.SetColumnSpan(lblError, 2);
-        root.Controls.Add(btnRow, 0, 8);           root.SetColumnSpan(btnRow, 2);
+        root.Controls.Add(lblTitle,          0, 0);  root.SetColumnSpan(lblTitle,          2);
+        root.Controls.Add(lblServerLabel,    0, 1);  root.Controls.Add(lblServerValue,    1, 1);
+        root.Controls.Add(lblDomainLabel,    0, 2);  root.Controls.Add(lblDomainValue,    1, 2);
+        root.Controls.Add(chkIntegrated,     0, 3);  root.SetColumnSpan(chkIntegrated,    2);
+        root.Controls.Add(lblUsernameLabel,  0, 4);  root.SetColumnSpan(lblUsernameLabel, 2);
+        root.Controls.Add(txtUsername,       0, 5);  root.SetColumnSpan(txtUsername,      2);
+        root.Controls.Add(lblPasswordLabel,  0, 6);  root.SetColumnSpan(lblPasswordLabel, 2);
+        root.Controls.Add(pwRow,             0, 7);  root.SetColumnSpan(pwRow,            2);
+        root.Controls.Add(lblError,          0, 8);  root.SetColumnSpan(lblError,         2);
+        root.Controls.Add(btnRow,            0, 9);  root.SetColumnSpan(btnRow,           2);
 
         Controls.Add(root);
     }

@@ -5,7 +5,9 @@ public partial class LoginForm : Form
     // Kept alive after successful connect; Program.cs passes it to MainForm
     public LdapService? ConnectedService { get; private set; }
 
-    public string Username => txtUsername.Text.Trim();
+    public string Username => chkIntegrated.Checked
+        ? System.Security.Principal.WindowsIdentity.GetCurrent().Name
+        : txtUsername.Text.Trim();
 
     private readonly AppConfig _config;
     private readonly string _configPath;
@@ -28,6 +30,23 @@ public partial class LoginForm : Form
         txtUsername.SelectionStart = txtUsername.Text.Length;
 
         btnConfig.Visible = IsFileEditable(configPath);
+
+        // Apply initial visibility — checkbox starts checked (SSO), so hide manual fields.
+        UpdateCredentialFieldVisibility();
+    }
+
+    // ── SSO checkbox ─────────────────────────────────────────────────────────
+
+    private void chkIntegrated_CheckedChanged(object sender, EventArgs e)
+        => UpdateCredentialFieldVisibility();
+
+    private void UpdateCredentialFieldVisibility()
+    {
+        bool sso = chkIntegrated.Checked;
+        lblUsernameLabel.Visible = !sso;
+        txtUsername.Visible      = !sso;
+        lblPasswordLabel.Visible = !sso;
+        pwRow.Visible            = !sso;
     }
 
     // ── eye toggle ────────────────────────────────────────────────────────────
@@ -45,29 +64,35 @@ public partial class LoginForm : Form
 
     private async void btnConnect_Click(object sender, EventArgs e)
     {
-        var user = txtUsername.Text.Trim();
-        if (string.IsNullOrWhiteSpace(user) || user == _config.NetBiosHint + @"\")
+        bool sso  = chkIntegrated.Checked;
+        var  user = sso
+            ? System.Security.Principal.WindowsIdentity.GetCurrent().Name
+            : txtUsername.Text.Trim();
+
+        if (!sso && (string.IsNullOrWhiteSpace(user) || user == _config.NetBiosHint + @"\"))
         {
             ShowError("Enter your username.");
             txtUsername.Focus();
             return;
         }
 
-        // Init audit logger now that we have a username (path + machine are stable for the whole session).
+        // Init audit logger now that we have a username (path + machine are stable for the session).
         AuditLogger.Init(_config.AuditLogPath, user, Environment.MachineName, _config.AuditLogRetainDays);
 
         SetFormBusy(true);
-        ShowError(_config.Endpoints.Count > 1
-            ? "Locating an available domain controller…"
+        ShowError(sso ? "Signing in with your Windows credentials…"
+            : _config.Endpoints.Count > 1 ? "Locating an available domain controller…"
             : "Connecting…", isInfo: true);
 
-        var password = txtPassword.Text;
         var svc = new LdapService();
 
-        // 1. Bind (with multi-DC failover)
+        // 1. Bind
         try
         {
-            await Task.Run(() => svc.Connect(_config, user, password));
+            if (sso)
+                await Task.Run(() => svc.ConnectIntegrated(_config));
+            else
+                await Task.Run(() => svc.Connect(_config, user, txtPassword.Text));
         }
         catch (NoReachableDomainControllerException ex)
         {
@@ -75,6 +100,17 @@ public partial class LoginForm : Form
             Logger.Exception("LoginForm: no DC reachable", ex);
             ShowError("No domain controller is reachable. Check the configuration (Config) and try again.");
             SetFormBusy(false);
+            return;
+        }
+        catch (Exception ex) when (sso)
+        {
+            // SSO failed — uncheck and let the user fall back to manual credentials.
+            svc.Dispose();
+            Logger.Exception("LoginForm: SSO bind failed — falling back to manual login", ex);
+            chkIntegrated.Checked = false;   // triggers UpdateCredentialFieldVisibility
+            ShowError("Single Sign-On failed. Enter your credentials to sign in manually.");
+            SetFormBusy(false);
+            txtUsername.Focus();
             return;
         }
         catch (Exception ex)
@@ -100,8 +136,7 @@ public partial class LoginForm : Form
                 AuditLogger.LogLoginDenied(detail);
                 ShowError("Access denied. " + detail);
                 SetFormBusy(false);
-                txtPassword.Focus();
-                txtPassword.SelectAll();
+                if (!sso) { txtPassword.Focus(); txtPassword.SelectAll(); }
                 return;
             }
         }
@@ -117,7 +152,7 @@ public partial class LoginForm : Form
 
         // 3. Granted
         AuditLogger.LogLoginGranted(svc.ActiveEndpoint?.Host ?? _config.Domain);
-        ConnectedService = svc;             // handed off to MainForm
+        ConnectedService = svc;
         Logger.Info($"LoginForm: access GRANTED for '{user}' on {svc.ActiveEndpoint}; closing with OK.");
         DialogResult = DialogResult.OK;
         Close();
@@ -125,10 +160,11 @@ public partial class LoginForm : Form
 
     private void SetFormBusy(bool busy)
     {
-        btnConnect.Enabled = !busy;
-        txtUsername.Enabled = !busy;
-        txtPassword.Enabled = !busy;
-        UseWaitCursor = busy;
+        btnConnect.Enabled      = !busy;
+        chkIntegrated.Enabled   = !busy;
+        txtUsername.Enabled     = !busy;
+        txtPassword.Enabled     = !busy;
+        UseWaitCursor           = busy;
     }
 
     // ── config editor ─────────────────────────────────────────────────────────

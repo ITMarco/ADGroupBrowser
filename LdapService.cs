@@ -22,6 +22,92 @@ public class LdapService : IDisposable
     /// <summary>The DC we actually bound to (null until a successful Connect).</summary>
     public DcEndpoint? ActiveEndpoint { get; private set; }
 
+    /// <summary>
+    /// Bind using the current Windows identity — no explicit credentials.
+    /// Works on AADJ machines with cloud Kerberos trust or Hybrid AADJ.
+    /// Throws on auth rejection (no failover to other DCs on credential failure).
+    /// </summary>
+    public void ConnectIntegrated(AppConfig config)
+    {
+        _config = config;
+        var who       = System.Security.Principal.WindowsIdentity.GetCurrent().Name;
+        var endpoints = config.Endpoints.ToList();
+        Shuffle(endpoints);
+
+        Logger.Info("──────── LDAP Connect (integrated / SSO) ────────");
+        Logger.Info($"  Candidates  : {string.Join(", ", endpoints.Select(e => e.ToString()))}");
+        Logger.Info($"  SSL         : {config.UseSsl}");
+        Logger.Info($"  Identity    : {who}");
+
+        var failures = new List<string>();
+
+        foreach (var ep in endpoints)
+        {
+            Logger.Info($"  Probing {ep} (TCP, {config.ConnectTimeoutMs} ms)…");
+            if (!TcpAlive(ep.Host, ep.Port, config.ConnectTimeoutMs))
+            {
+                Logger.Warn($"  {ep} not reachable (TCP) — skipping.");
+                failures.Add($"{ep}: not reachable (TCP)");
+                continue;
+            }
+
+            Logger.Info($"  {ep} reachable; binding with current identity…");
+            try
+            {
+                _conn = BindIntegrated(ep, config);
+                ActiveEndpoint = ep;
+                Logger.Info($"  Bind SUCCEEDED on {ep} as {who}.");
+                return;
+            }
+            catch (LdapException lex) when (lex.ErrorCode == LDAP_INVALID_CREDENTIALS)
+            {
+                // The DC rejected our identity — same result on every DC, no point continuing.
+                Logger.Exception($"  Bind on {ep}: integrated auth rejected", lex);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Logger.Exception($"  Bind on {ep} failed — trying next DC", ex);
+                failures.Add($"{ep}: {ex.Message}");
+            }
+        }
+
+        var detail = failures.Count > 0 ? string.Join("\r\n", failures) : "(no domain controllers configured)";
+        Logger.Error("  No domain controller could be reached (integrated).\r\n" + detail);
+        throw new NoReachableDomainControllerException(
+            "No domain controller could be reached.\r\n\r\n" + detail);
+    }
+
+    private static LdapConnection BindIntegrated(DcEndpoint ep, AppConfig config)
+    {
+        var identifier = new LdapDirectoryIdentifier(ep.Host, ep.Port, false, false);
+        var connection = new LdapConnection(identifier);
+
+        connection.SessionOptions.ProtocolVersion = 3;
+        connection.SessionOptions.ReferralChasing = ReferralChasingOptions.None;
+        connection.Timeout = TimeSpan.FromSeconds(config.TimeoutSeconds);
+
+        if (config.UseSsl)
+        {
+            connection.SessionOptions.SecureSocketLayer = true;
+            connection.SessionOptions.VerifyServerCertificate = (_, cert) =>
+            {
+                Logger.Debug($"    cert from {ep.Host}: subject='{cert?.Subject}' — accepted.");
+                return true;
+            };
+        }
+
+        // AuthType.Negotiate without an explicit Credential uses the current Windows
+        // identity token (Kerberos via cloud trust / hybrid join, with NTLM as fallback).
+        connection.AuthType = AuthType.Negotiate;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        connection.Bind();
+        sw.Stop();
+        Logger.Info($"    bind() returned in {sw.ElapsedMilliseconds} ms.");
+        return connection;
+    }
+
     public void Connect(AppConfig config, string usernameInput, string password)
     {
         _config = config;
