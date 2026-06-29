@@ -1,0 +1,23 @@
+## Build outputs
+bin/
+obj/
+dist/
+
+## Publish output — the .exe lives here; config.json is environment-specific
+publish/
+
+## User-specific config — NEVER commit; copy config.sample.json and rename
+config.json
+
+## Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+
+## Diagnostic log written next to the exe at runtime
+ADGroupBrowser.log
+
+## OS
+Thumbs.db
+.DS_Store

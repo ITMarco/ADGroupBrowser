@@ -1,0 +1,24 @@
+{
+  "_comment": "TEMPLATE — copy this file to config.json next to the exe and edit. The app reads config.json (or a path passed on the command line). Unknown keys like this one are ignored.",
+  "domain": "contoso.local",
+  "domain_controllers": [
+    "dc1.contoso.local",
+    "dc2.contoso.local",
+    "dc3.contoso.local:636"
+  ],
+  "port": 636,
+  "use_ssl": true,
+  "timeout_seconds": 30,
+  "connect_timeout_ms": 1500,
+  "_search_ous_comment": "Each entry is either a plain string (= include child OUs) or an object with a 'subtree' flag. subtree=true: this OU and all child OUs. subtree=false: only groups directly in this OU.",
+  "search_ous": [
+    "OU=SecurityGroups,OU=IT,DC=contoso,DC=local",
+    { "dn": "OU=DistributionLists,DC=contoso,DC=local", "subtree": false }
+  ],
+  "allowed_groups": [
+    "AD Group Browser Users",
+    "CN=Helpdesk,OU=Groups,DC=contoso,DC=local"
+  ],
+  "audit_log_path": "",
+  "audit_log_retain_days": 31
+}
