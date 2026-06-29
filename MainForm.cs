@@ -29,6 +29,11 @@ public partial class MainForm : Form
         var dc = svc.ActiveEndpoint?.Host ?? config.Domain;
         lblConnected.Text = $"Connected as {username}  |  DC: {dc}";
         btnConfig.Visible = IsFileEditable(configPath);
+
+        // Restore saved window position/size (must happen before the form is shown).
+        var prefs = WindowPrefs.Load();
+        prefs?.ApplyTo(this);
+        if (prefs?.Maximized == true) WindowState = FormWindowState.Maximized;
     }
 
     // OnLoad runs after the form is shown — safe to call Close() here if needed
@@ -331,6 +336,13 @@ public partial class MainForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        // Save window position/size before disposing anything.
+        var prefs = new WindowPrefs { Maximized = WindowState == FormWindowState.Maximized };
+        var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+        prefs.Left = bounds.Left; prefs.Top = bounds.Top;
+        prefs.Width = bounds.Width; prefs.Height = bounds.Height;
+        prefs.Save();
+
         _svc.Dispose();
         _ldapGate.Dispose();
         _ouFont?.Dispose();
