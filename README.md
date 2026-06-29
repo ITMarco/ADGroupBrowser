@@ -15,11 +15,19 @@ Browse Active Directory group memberships from Azure AD-joined (non-domain-joine
 ### Getting started
 
 1. Run `ADGroupBrowser.exe` (or `ADGroupBrowser-standalone.exe` if provided)
-2. The login screen appears. Your domain prefix is pre-filled in the username field (e.g. `AD\`)
-3. Enter your username and password, then click **Connect** (or press Enter)
-4. The main window opens, showing all groups from the configured OUs in a tree on the left
+2. The login screen appears
+3. Sign in (see below) and click **Connect** (or press Enter)
+4. The main window opens showing all groups from the configured OUs in a tree on the left
 
 > If access is restricted to a specific AD group and you are not a member, you will see an "Access denied" message and cannot proceed.
+
+### Signing in
+
+The login screen offers two modes:
+
+**Single Sign-On (default)** — the *"Use my current Windows sign-in"* checkbox is ticked by default. Click **Connect** and the app authenticates using your current Windows session — no username or password entry needed. This works on Azure AD-joined machines with cloud Kerberos trust or Hybrid AADJ. If SSO is not available on your machine, the app automatically falls back to manual sign-in.
+
+**Manual sign-in** — untick the checkbox to reveal the username and password fields. Your domain prefix is pre-filled (e.g. `AD\`). Enter your credentials and click **Connect**.
 
 ### Browsing groups
 
@@ -40,7 +48,7 @@ Click **⟳ Refresh** to reload all groups from the domain controllers and clear
 
 ### Config button (admin only)
 
-If the `config.json` file is writable for you, a **⚙ Config** button appears in the top bar and on the login screen. This opens the graphical configuration editor — see the *Technical Manual* below.
+A **⚙ Config** button appears in the top bar and on the login screen **only when the `config.json` file is writable for you**. Regular users whose config is set to read-only will not see it. Clicking it opens the graphical configuration editor — see the *Technical Manual* below.
 
 ---
 
@@ -50,8 +58,9 @@ If the `config.json` file is writable for you, a **⚙ Config** button appears i
 
 1. Place `ADGroupBrowser.exe` (or the standalone variant) in a shared folder, Intune package, or local directory
 2. Copy `config.sample.json` to `config.json` in the same folder and edit it
-3. Set NTFS permissions on `config.json`: Administrators = Full Control, Domain Users = Read (this hides the Config button for regular users)
-4. Optionally create a UNC path for the audit log and grant the application's users Write access to it
+3. Use the graphical **⚙ Config** editor (visible when the file is writable) or edit `config.json` with any text editor
+4. Set NTFS permissions on `config.json`: **Administrators = Full Control**, **Domain Users = Read** — this automatically hides the Config button for regular users, preventing them from changing the configuration
+5. Optionally configure a UNC path for the audit log and grant the application's users Write access to it
 
 ### Downloads
 
@@ -62,14 +71,50 @@ If the `config.json` file is writable for you, a **⚙ Config** button appears i
 
 The framework-dependent build is recommended for managed environments where the .NET runtime is deployed via Intune/SCCM. Use the standalone build for ad-hoc or isolated machines.
 
-### Building from source
+### Command-line and multiple configs
+
+If more than one `config*.json` file is placed next to the exe, a chooser dialog appears at startup. You can also specify a config path on the command line:
 
 ```
-dotnet publish ADGroupBrowser.csproj -c Release -r win-x64 --self-contained true  -p:PublishSingleFile=true -o dist/standalone
-dotnet publish ADGroupBrowser.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o dist/framework
+ADGroupBrowser.exe C:\path\to\my-config.json
+ADGroupBrowser.exe --config \\server\share\config-production.json
+ADGroupBrowser.exe -c config-test.json
+ADGroupBrowser.exe --config=config-test.json
 ```
 
-Or run `./release.ps1` (requires `gh` CLI and a GitHub credential) to bump the version, build both variants, and publish a GitHub release.
+This lets you deploy a single exe alongside multiple named configs (e.g. `config-prod.json`, `config-test.json`) and let users or scripts select the right environment.
+
+### Making config read-only (recommended)
+
+Setting `config.json` to read-only for regular users has two effects:
+
+1. The **⚙ Config** button is hidden — users cannot open the configuration editor
+2. Users cannot accidentally overwrite settings
+
+**NTFS permissions (local deployment)**
+
+Right-click `config.json` → Properties → Security → Edit:
+- Administrators: Full Control
+- Domain Users (or the specific user group): Read
+
+**Network share deployment**
+
+Deploy the exe and `config.json` to a read-only share. Users can run the exe from the share directly, or you can copy the exe locally and point it to the config via `--config \\server\share\config.json`.
+
+### Graphical config editor
+
+Open the editor via the **⚙ Config** button (visible only when `config.json` is writable). It has four tabs:
+
+| Tab | Contents |
+|---|---|
+| **Connection** | Domain name, domain controller list (Add / Update / Remove), Test Connection button per DC |
+| **Search OUs** | OU list with per-OU subtree flag (`[S]` = include child OUs, `[T]` = this OU only), Add / Update / Remove |
+| **Access Gate** | Allowed groups (CN or full DN), Add / Update / Remove |
+| **Advanced** | SSL toggle, default port, LDAP timeout, connect timeout, audit log path and retention |
+
+Click **Save** to write the current config file, or **Save As…** to save a copy under a new name.
+
+> Changes take effect the next time the application is started — a running session is not affected.
 
 ### config.json reference
 
@@ -118,27 +163,26 @@ Or run `./release.ps1` (requires `gh` CLI and a GitHub credential) to bump the v
   // Leave empty ("") to disable audit logging.
   "audit_log_path": "\\\\fileserver\\AuditLogs\\ADGroupBrowser",
 
-  // Number of days to retain audit CSV files. Older files are deleted at startup.
+  // How many days of audit CSV files to keep. Files older than this are
+  // deleted at startup. Default: 31.
   "audit_log_retain_days": 31
 }
 ```
-
-### Multiple configs / command-line usage
-
-If more than one `config*.json` file is placed next to the exe, a chooser dialog appears at startup. You can also specify a config path explicitly:
-
-```
-ADGroupBrowser.exe C:\path\to\my-config.json
-ADGroupBrowser.exe --config \\server\share\config-production.json
-```
-
-This lets you deploy a single exe with multiple named configs (e.g. `config-prod.json`, `config-test.json`).
 
 ### Domain controller requirements
 
 - LDAPS (TLS on port 636) must be enabled on your DCs — the default for modern AD
 - The application uses `AuthType.Negotiate` (NTLM/Kerberos) over LDAPS; no additional configuration is needed on the DC side
 - Server certificates are not validated (self-signed certificates are accepted) — appropriate for internal corporate DCs
+
+### Single Sign-On requirements
+
+For SSO to work on Azure AD-joined machines the following must be in place:
+
+- **Cloud Kerberos trust** (recommended): configured in Azure AD Connect → Hybrid Identity → User sign-in → SSO. Allows Azure AD-joined machines to obtain Kerberos tickets for on-premises resources without a VPN.
+- **Hybrid AADJ**: machine joined to both on-premises AD and Azure AD. Standard Kerberos works over line-of-sight to a DC.
+
+If neither is configured, SSO will fail and the app automatically falls back to username/password login.
 
 ### Access gate
 
@@ -151,13 +195,14 @@ When `audit_log_path` is configured, the app writes one line per event to a per-
 | Event | When |
 |---|---|
 | `LoginGranted` | Successful authentication and access check |
-| `LoginDenied` | Access check denied (wrong credentials also result in no event) |
+| `LoginDenied` | Access check denied (wrong credentials result in no audit event) |
 | `GroupViewed` | A user opens a group's member list |
 
 Each row contains: `Timestamp, Event, Username, Machine, GroupName, GroupDN, Mode, MemberCount, DC, Detail`
 
 - Grant the application's users **Modify** (or **Write**) permission to the audit log folder
 - If the folder is unreachable, the app logs a warning in its diagnostic log (`ADGroupBrowser.log`) and continues normally — audit failures never block the user
+- Files older than `audit_log_retain_days` days are automatically deleted at startup
 
 ### Diagnostic log
 
@@ -167,3 +212,12 @@ Each row contains: `Timestamp, Event, Username, Machine, GroupName, GroupDN, Mod
 - Any exception with a full stack trace
 
 This log is for IT troubleshooting only and is not intended to be distributed to end-users.
+
+### Building from source
+
+```
+dotnet publish ADGroupBrowser.csproj -c Release -r win-x64 --self-contained true  -p:PublishSingleFile=true -o dist/standalone
+dotnet publish ADGroupBrowser.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o dist/framework
+```
+
+To cut a full release (bump version, build both variants, create a GitHub release with assets attached), run `./release.ps1` from the project root. It reads a GitHub token from the Windows credential store — no additional CLI tools required.
