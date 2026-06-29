@@ -1,5 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -15,11 +14,9 @@
     <Company>ITMarco</Company>
     <Copyright>© 2026 ITMarco</Copyright>
   </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="System.DirectoryServices.Protocols" Version="10.0.9" />
   </ItemGroup>
-
   <ItemGroup>
     <!-- Ship the sample template only. The real config.json is environment-specific
          and is NEVER copied/overwritten by the build. -->
@@ -27,5 +24,4 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
-
 </Project>

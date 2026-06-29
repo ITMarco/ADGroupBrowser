@@ -97,6 +97,7 @@ public sealed class ConfigEditorForm : Form
         var leftBtns = new FlowLayoutPanel
         {
             AutoSize          = true,
+            WrapContents      = false,
             FlowDirection     = FlowDirection.LeftToRight,
             Margin            = new Padding(0),
         };
