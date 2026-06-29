@@ -27,6 +27,7 @@ static class Program
             // DPI mode comes from <ApplicationHighDpiMode>PerMonitorV2</…> in the csproj,
             // applied here. (Calling SetHighDpiMode again afterwards is a no-op.)
             ApplicationConfiguration.Initialize();
+            var appIcon = LoadAppIcon();
             Logger.Info("WinForms application initialized.");
             Logger.Info($"Command line args: {(args.Length == 0 ? "(none)" : string.Join(" ", args))}");
 
@@ -44,6 +45,7 @@ static class Program
                 Logger.Info($"  search OU: {ou.Dn}  (subtree={ou.Subtree})");
 
             using var loginForm = new LoginForm(config, configPath!);
+            if (appIcon is not null) loginForm.Icon = appIcon;
             Logger.Info("Showing login form.");
             var result = loginForm.ShowDialog();
             Logger.Info($"Login dialog returned: {result}");
@@ -56,6 +58,7 @@ static class Program
 
             Logger.Info("Constructing main form.");
             using var main = new MainForm(config, configPath!, loginForm.Username, loginForm.ConnectedService);
+            if (appIcon is not null) main.Icon = appIcon;
             Logger.Info("Running main form message loop.");
             Application.Run(main);
             Logger.Info("Main form closed; application exiting normally.");
@@ -168,6 +171,16 @@ static class Program
             Logger.Exception("FindLocalConfigs failed", ex);
             return Array.Empty<string>();
         }
+    }
+
+    private static Icon? LoadAppIcon()
+    {
+        try
+        {
+            using var s = typeof(Program).Assembly.GetManifestResourceStream("ADGroupBrowser.app.ico");
+            return s is not null ? new Icon(s) : null;
+        }
+        catch { return null; }
     }
 
     private static void ShowCrash(Exception ex)

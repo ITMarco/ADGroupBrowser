@@ -13,9 +13,13 @@
     <Product>AD Group Browser</Product>
     <Company>ITMarco</Company>
     <Copyright>© 2026 ITMarco</Copyright>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.DirectoryServices.Protocols" Version="10.0.9" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="app.ico" />
   </ItemGroup>
   <ItemGroup>
     <!-- Ship the sample template only. The real config.json is environment-specific
