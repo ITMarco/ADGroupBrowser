@@ -12,6 +12,16 @@ public sealed class ConfigEditorForm : Form
 {
     private readonly string _configPath;
     private string _savePath;
+    private readonly string _saveMessage;
+
+    /// <summary>The path the config was actually written to on a successful save (null until then).</summary>
+    public string? SavedPath { get; private set; }
+
+    // Lazily-created LDAP connection (integrated/SSO auth) reused for every OU/group
+    // existence check in this editor session. Null if no connection could be made —
+    // callers then treat the check as "unverifiable" instead of failing the Add/Update.
+    private LdapService? _validationSvc;
+    private bool _validationAttempted;
 
     // Connection tab
     private TextBox _txtDomain = null!;
@@ -39,12 +49,41 @@ public sealed class ConfigEditorForm : Form
     private TextBox _txtAuditPath = null!;
     private NumericUpDown _numRetainDays = null!;
 
-    public ConfigEditorForm(AppConfig config, string configPath)
+    /// <param name="saveMessage">
+    /// Shown in the confirmation dialog after a successful save. Defaults to the
+    /// "restart the application" notice (correct when editing the config of an already-
+    /// running session). Pass a different message — or "" to show nothing — when there's
+    /// no running session to restart, e.g. when creating a brand-new config from the
+    /// startup chooser.
+    /// </param>
+    public ConfigEditorForm(AppConfig config, string configPath, string? saveMessage = null)
     {
-        _configPath = configPath;
-        _savePath   = configPath;
+        _configPath  = configPath;
+        _savePath    = configPath;
+        _saveMessage = saveMessage ?? "Configuration saved.\n\nRestart the application for the changes to take effect.";
         BuildUI();
-        LoadFromConfig(config);
+
+        // Always re-read from disk so changes saved in an earlier editor session (within
+        // the same app run) show up here, instead of the stale config object captured
+        // once at app startup. A missing file (e.g. creating a brand-new config) falls
+        // back to the blank/default config passed in, which is exactly what we want.
+        var fresh = config;
+        try
+        {
+            fresh = AppConfig.Load(configPath);
+        }
+        catch (Exception ex)
+        {
+            Logger.Exception($"ConfigEditor: could not re-read {configPath} from disk; using in-memory config", ex);
+        }
+
+        LoadFromConfig(fresh);
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _validationSvc?.Dispose();
+        base.OnFormClosed(e);
     }
 
     // ── UI construction ────────────────────────────────────────────────────────
@@ -346,10 +385,11 @@ public sealed class ConfigEditorForm : Form
         // Buttons row
         var ouBtns = new FlowLayoutPanel { AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0) };
         _btnOUAdd = MakeSmallButton("Add");
-        _btnOUAdd.Click += (_, _) =>
+        _btnOUAdd.Click += async (_, _) =>
         {
             var dn = _txtOUDn.Text.Trim();
             if (string.IsNullOrEmpty(dn)) { MessageBox.Show("Enter a DN.", "Required", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            if (!await ConfirmOuAsync(dn)) return;
             var ou = new SearchOu { Dn = dn, Subtree = _chkSubtree.Checked };
             _ous.Add(ou);
             _lstOUs.Items.Add(OuDisplay(ou));
@@ -360,12 +400,13 @@ public sealed class ConfigEditorForm : Form
 
         _btnOUUpdate = MakeSmallButton("Update");
         _btnOUUpdate.Enabled = false;
-        _btnOUUpdate.Click += (_, _) =>
+        _btnOUUpdate.Click += async (_, _) =>
         {
             int sel = _lstOUs.SelectedIndex;
             if (sel < 0) return;
             var dn = _txtOUDn.Text.Trim();
             if (string.IsNullOrEmpty(dn)) { MessageBox.Show("Enter a DN.", "Required", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            if (!await ConfirmOuAsync(dn)) return;
             var ou = new SearchOu { Dn = dn, Subtree = _chkSubtree.Checked };
             _ous[sel] = ou;
             _lstOUs.Items[sel] = OuDisplay(ou);
@@ -462,10 +503,11 @@ public sealed class ConfigEditorForm : Form
         // Buttons row
         var groupBtns = new FlowLayoutPanel { AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0) };
         _btnGroupAdd = MakeSmallButton("Add");
-        _btnGroupAdd.Click += (_, _) =>
+        _btnGroupAdd.Click += async (_, _) =>
         {
             var val = _txtGroup.Text.Trim();
             if (string.IsNullOrEmpty(val)) return;
+            if (!await ConfirmGroupAsync(val)) return;
             _lstGroups.Items.Add(val);
             _lstGroups.SelectedIndex = _lstGroups.Items.Count - 1;
             _txtGroup.Clear();
@@ -474,12 +516,13 @@ public sealed class ConfigEditorForm : Form
 
         _btnGroupUpdate = MakeSmallButton("Update");
         _btnGroupUpdate.Enabled = false;
-        _btnGroupUpdate.Click += (_, _) =>
+        _btnGroupUpdate.Click += async (_, _) =>
         {
             int sel = _lstGroups.SelectedIndex;
             if (sel < 0) return;
             var val = _txtGroup.Text.Trim();
             if (string.IsNullOrEmpty(val)) return;
+            if (!await ConfirmGroupAsync(val)) return;
             _lstGroups.Items[sel] = val;
             _lstGroups.ClearSelected();
             _txtGroup.Clear();
@@ -704,9 +747,9 @@ public sealed class ConfigEditorForm : Form
         {
             WriteJson(path);
             Logger.Info($"ConfigEditor: saved config to {path}");
-            MessageBox.Show(
-                "Configuration saved.\n\nRestart the application for the changes to take effect.",
-                "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            SavedPath = path;
+            if (!string.IsNullOrEmpty(_saveMessage))
+                MessageBox.Show(_saveMessage, "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
             DialogResult = DialogResult.OK;
             Close();
         }
@@ -807,6 +850,103 @@ public sealed class ConfigEditorForm : Form
             _btnDCTest.Enabled = true;
             _btnDCTest.Text    = "Test Connection…";
         }
+    }
+
+    // ── existence validation (best-effort, non-blocking) ─────────────────────────
+
+    private AppConfig BuildSnapshotConfig()
+    {
+        var dcs = new List<string>();
+        foreach (var item in _lstDCs.Items)
+            if (item?.ToString() is string s && !string.IsNullOrWhiteSpace(s))
+                dcs.Add(s);
+
+        return new AppConfig
+        {
+            Domain            = _txtDomain.Text.Trim(),
+            DomainControllers = dcs,
+            Port              = (int)_numPort.Value,
+            UseSsl            = _chkSsl.Checked,
+            TimeoutSeconds    = (int)_numTimeout.Value,
+            ConnectTimeoutMs  = (int)_numConnectTimeout.Value,
+        };
+    }
+
+    // Connects once (integrated/SSO auth, using whatever domain/DCs are currently typed
+    // into the editor) and reuses the connection for every check in this session.
+    private async Task<LdapService?> GetValidationConnectionAsync()
+    {
+        if (_validationSvc is not null) return _validationSvc;
+        if (_validationAttempted) return null;
+        _validationAttempted = true;
+
+        var snapshot = BuildSnapshotConfig();
+        if (string.IsNullOrWhiteSpace(snapshot.Domain) || snapshot.Endpoints.Count == 0) return null;
+
+        try
+        {
+            var svc = new LdapService();
+            await Task.Run(() => svc.ConnectIntegrated(snapshot));
+            _validationSvc = svc;
+            return svc;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"ConfigEditor: validation connection failed; existence checks will be skipped: {ex.Message}");
+            return null;
+        }
+    }
+
+    // null = could not verify (no connection / error); true/false = verified result.
+    private async Task<bool?> OuExistsAsync(string dn)
+    {
+        var svc = await GetValidationConnectionAsync();
+        if (svc is null) return null;
+        try { return await Task.Run(() => svc.OuExists(dn)); }
+        catch (Exception ex) { Logger.Warn($"ConfigEditor: OU existence check failed for '{dn}': {ex.Message}"); return null; }
+    }
+
+    private async Task<bool?> GroupExistsAsync(string cnOrDn)
+    {
+        var svc = await GetValidationConnectionAsync();
+        if (svc is null) return null;
+        try { return await Task.Run(() => svc.GroupExists(cnOrDn)); }
+        catch (Exception ex) { Logger.Warn($"ConfigEditor: group existence check failed for '{cnOrDn}': {ex.Message}"); return null; }
+    }
+
+    // Returns true if the entry should be added: verified-present, or the admin chose
+    // "add anyway" after a not-found / could-not-verify warning. Never blocks outright —
+    // the directory may be unreachable, or the OU/group may be staged ahead of AD changes.
+    private async Task<bool> ConfirmOuAsync(string dn)
+    {
+        UseWaitCursor = true;
+        try
+        {
+            var exists = await OuExistsAsync(dn);
+            if (exists == true) return true;
+            var msg = exists == false
+                ? $"This OU was not found in the directory:\n\n{dn}\n\nAdd it anyway?"
+                : $"Could not verify this OU against the directory right now (no connection or insufficient rights):\n\n{dn}\n\nAdd it anyway?";
+            return MessageBox.Show(this, msg, "OU not verified", MessageBoxButtons.YesNo,
+                exists == false ? MessageBoxIcon.Warning : MessageBoxIcon.Question) == DialogResult.Yes;
+        }
+        finally { UseWaitCursor = false; }
+    }
+
+    private async Task<bool> ConfirmGroupAsync(string cnOrDn)
+    {
+        UseWaitCursor = true;
+        try
+        {
+            var exists = await GroupExistsAsync(cnOrDn);
+            if (exists == true) return true;
+            var msg = exists == false
+                ? $"This group was not found in the directory:\n\n{cnOrDn}\n\nAdd it anyway?"
+                : $"Could not verify this group against the directory right now (no connection or insufficient rights):\n\n{cnOrDn}\n\nAdd it anyway?";
+            return MessageBox.Show(this, msg, "Group not verified", MessageBoxButtons.YesNo,
+                exists == false ? MessageBoxIcon.Warning : MessageBoxIcon.Question) == DialogResult.Yes;
+        }
+        finally { UseWaitCursor = false; }
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

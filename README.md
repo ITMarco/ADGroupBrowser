@@ -15,11 +15,20 @@ Browse Active Directory group memberships from Azure AD-joined (non-domain-joine
 ### Getting started
 
 1. Run `ADGroupBrowser.exe` (or `ADGroupBrowser-standalone.exe` if provided)
-2. The login screen appears
-3. Sign in (see below) and click **Connect** (or press Enter)
-4. The main window opens showing all groups from the configured OUs in a tree on the left
+2. If no configuration — or more than one — is found next to the exe, a chooser appears first (see below)
+3. The login screen appears
+4. Sign in (see below) and click **Connect** (or press Enter)
+5. The main window opens showing all groups from the configured OUs in a tree on the left
 
 > If access is restricted to a specific AD group and you are not a member, you will see an "Access denied" message and cannot proceed.
+
+### Choosing or creating a configuration
+
+This screen appears automatically when zero, or more than one, `config*.json` file is found next to the exe (with exactly one present, it's loaded silently and this screen is skipped).
+
+- **Pick a configuration** from the list and click **Load** (or double-click it) — each entry shows its domain and a quick DC/OU count
+- **Browse…** to point at a config file anywhere else (e.g. on a network share)
+- **New Config…** opens the graphical configuration editor with blank defaults (port 636, SSL on, 31-day audit retention) so you can build a working `config.json` from scratch — no need to hand-edit JSON or copy the sample file first. The first free `config.json` / `config2.json` / … name next to the exe is suggested automatically.
 
 ### Signing in
 
@@ -28,6 +37,8 @@ The login screen offers two modes:
 **Single Sign-On (default)** — the *"Use my current Windows sign-in"* checkbox is ticked by default. Click **Connect** and the app authenticates using your current Windows session — no username or password entry needed. This works on Azure AD-joined machines with cloud Kerberos trust or Hybrid AADJ. If SSO is not available on your machine, the app automatically falls back to manual sign-in.
 
 **Manual sign-in** — untick the checkbox to reveal the username and password fields. Your domain prefix is pre-filled (e.g. `AD\`). Enter your credentials and click **Connect**.
+
+The **Server:** line shows a live reachability check of the configured domain controller(s), done in the background as soon as the screen loads: **✓ reachable**, **⚠ N/M reachable** (some DCs down), or **✗ unreachable**. This is informational only — it doesn't block you from clicking Connect.
 
 ### Browsing groups
 
@@ -84,6 +95,8 @@ ADGroupBrowser.exe --config=config-test.json
 
 This lets you deploy a single exe alongside multiple named configs (e.g. `config-prod.json`, `config-test.json`) and let users or scripts select the right environment.
 
+When no path is given and zero (or more than one) local config is found, the startup chooser's **New Config…** button can create the very first `config.json` for you via the graphical editor — handy for a first-time deployment where nothing has been configured yet.
+
 ### Making config read-only (recommended)
 
 Setting `config.json` to read-only for regular users has two effects:
@@ -115,6 +128,10 @@ Open the editor via the **⚙ Config** button (visible only when `config.json` i
 Click **Save** to write the current config file, or **Save As…** to save a copy under a new name.
 
 > Changes take effect the next time the application is started — a running session is not affected.
+
+The editor always re-reads `config.json` from disk when it opens, so if you save, close, and reopen it again in the same session, you'll see your last save — not the values from when the app first started.
+
+Adding or updating an entry on the **Search OUs** or **Access Gate** tab triggers a live existence check against the directory (using a one-time integrated/SSO connection to whichever domain/DCs are currently filled in on the Connection tab). If the OU or group can't be found — or can't be verified at all, e.g. no connectivity — you're asked to confirm before it's added; this never blocks you outright, since you may be staging a config ahead of AD changes or editing offline.
 
 ### config.json reference
 

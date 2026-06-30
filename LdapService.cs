@@ -213,8 +213,9 @@ public class LdapService : IDisposable
     }
 
     // Quick TCP reachability check so a dead DC is skipped instantly instead of
-    // hanging on the much longer LDAP bind timeout.
-    private static bool TcpAlive(string host, int port, int timeoutMs)
+    // hanging on the much longer LDAP bind timeout. Internal so LoginForm can reuse it
+    // for the informational "reachable" indicator on the login screen.
+    internal static bool TcpAlive(string host, int port, int timeoutMs)
     {
         try
         {
@@ -290,6 +291,53 @@ public class LdapService : IDisposable
         return granted
             ? (true, "Member of an allowed group.")
             : (false, "Your account is not a member of any group permitted to use this tool.");
+    }
+
+    // ── config-editor validation (M-validate) ───────────────────────────────────
+
+    /// <summary>Base-scope existence check for an OU/container DN.</summary>
+    public bool OuExists(string dn)
+    {
+        EnsureConnected();
+        var request = new SearchRequest(dn, "(objectClass=*)", SearchScope.Base, "distinguishedName");
+        request.TimeLimit = TimeSpan.FromSeconds(_config.TimeoutSeconds);
+        try
+        {
+            var response = (SearchResponse)_conn!.SendRequest(request);
+            return response.Entries.Count > 0;
+        }
+        catch (DirectoryOperationException ex) when (ex.Response?.ResultCode == ResultCode.NoSuchObject)
+        {
+            return false;   // definitively not found — other errors propagate (unverifiable)
+        }
+    }
+
+    /// <summary>Existence check for a group given as a CN or a full DN.</summary>
+    public bool GroupExists(string cnOrDn)
+    {
+        EnsureConnected();
+        var s = cnOrDn.Trim();
+
+        if (LooksLikeDn(s))
+        {
+            var request = new SearchRequest(s, "(objectClass=group)", SearchScope.Base, "distinguishedName");
+            request.TimeLimit = TimeSpan.FromSeconds(_config.TimeoutSeconds);
+            try
+            {
+                var response = (SearchResponse)_conn!.SendRequest(request);
+                return response.Entries.Count > 0;
+            }
+            catch (DirectoryOperationException ex) when (ex.Response?.ResultCode == ResultCode.NoSuchObject)
+            {
+                return false;
+            }
+        }
+
+        var filter = $"(&(objectClass=group)(cn={EscapeDn(s)}))";
+        var req2   = new SearchRequest(_config.DomainDn, filter, SearchScope.Subtree, "distinguishedName");
+        req2.TimeLimit = TimeSpan.FromSeconds(_config.TimeoutSeconds);
+        var resp2  = (SearchResponse)_conn!.SendRequest(req2);
+        return resp2.Entries.Count > 0;
     }
 
     // Resolve a mix of DNs and CNs to DNs (CNs looked up via one combined query).

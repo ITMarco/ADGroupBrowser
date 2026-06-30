@@ -11,6 +11,7 @@ public sealed class ConfigChooserForm : Form
     private readonly ListBox _list = new();
     private readonly Button _btnLoad = new();
     private readonly Button _btnBrowse = new();
+    private readonly Button _btnNew = new();
     private readonly Button _btnExit = new();
 
     private sealed class Item
@@ -63,8 +64,8 @@ public sealed class ConfigChooserForm : Form
         var hint = new Label
         {
             Text        = any
-                ? "More than one configuration was found next to the application. Pick one, or browse for another file."
-                : "No configuration file was found next to the application. Browse for one, or exit.",
+                ? "More than one configuration was found next to the application. Pick one, browse for another file, or create a new one."
+                : "No configuration file was found next to the application. Create a new one, browse for an existing file, or exit.",
             AutoSize    = true,
             MaximumSize = new Size(470, 0),
             ForeColor   = Color.DimGray,
@@ -97,7 +98,23 @@ public sealed class ConfigChooserForm : Form
         _btnBrowse.FlatStyle = FlatStyle.Flat;
         _btnBrowse.BackColor = Color.FromArgb(240, 242, 245);
         _btnBrowse.FlatAppearance.BorderColor = Color.FromArgb(190, 195, 205);
+        _btnBrowse.Margin = new Padding(0, 0, 8, 0);
         _btnBrowse.Click += (_, _) => Browse();
+
+        _btnNew.Text = "New Config…";
+        _btnNew.AutoSize = true;
+        _btnNew.Padding = new Padding(14, 6, 14, 6);
+        _btnNew.FlatStyle = FlatStyle.Flat;
+        _btnNew.BackColor = Color.FromArgb(240, 242, 245);
+        _btnNew.FlatAppearance.BorderColor = Color.FromArgb(190, 195, 205);
+        _btnNew.Click += (_, _) => CreateNew();
+
+        var leftButtons = new FlowLayoutPanel
+        {
+            AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0),
+        };
+        leftButtons.Controls.Add(_btnBrowse);
+        leftButtons.Controls.Add(_btnNew);
 
         var rightButtons = new FlowLayoutPanel
         {
@@ -126,7 +143,7 @@ public sealed class ConfigChooserForm : Form
         rightButtons.Controls.Add(_btnExit);
         rightButtons.Controls.Add(_btnLoad);
 
-        btnRow.Controls.Add(_btnBrowse, 0, 0);
+        btnRow.Controls.Add(leftButtons, 0, 0);
         btnRow.Controls.Add(rightButtons, 2, 0);
 
         root.Controls.Add(title, 0, 0);
@@ -178,5 +195,36 @@ public sealed class ConfigChooserForm : Form
             DialogResult = DialogResult.OK;
             Close();
         }
+    }
+
+    private void CreateNew()
+    {
+        var path = SuggestNewConfigPath();
+
+        // A blank AppConfig() already carries the right defaults (port 636, SSL on,
+        // 31-day audit retention, etc). The editor's own validation (domain, ≥1 DC,
+        // ≥1 OU) keeps an incomplete config from being saved.
+        using var editor = new ConfigEditorForm(new AppConfig(), path, "Configuration created.");
+        if (editor.ShowDialog(this) == DialogResult.OK && editor.SavedPath is not null)
+        {
+            SelectedPath = editor.SavedPath;
+            DialogResult = DialogResult.OK;
+            Close();
+        }
+    }
+
+    // First free "config.json", "config2.json", "config3.json", … next to the exe.
+    private static string SuggestNewConfigPath()
+    {
+        var dir = AppContext.BaseDirectory;
+        var candidate = Path.Combine(dir, "config.json");
+        if (!File.Exists(candidate)) return candidate;
+
+        for (int i = 2; i < 100; i++)
+        {
+            candidate = Path.Combine(dir, $"config{i}.json");
+            if (!File.Exists(candidate)) return candidate;
+        }
+        return Path.Combine(dir, $"config-{Guid.NewGuid():N}.json");
     }
 }

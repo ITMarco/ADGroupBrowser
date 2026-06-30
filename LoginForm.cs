@@ -25,6 +25,7 @@ public partial class LoginForm : Form
             ? eps[0] + ssl
             : $"{eps.Count} domain controllers{ssl}";
         lblDomainValue.Text = config.Domain;
+        _ = CheckDcReachabilityAsync();
 
         txtUsername.Text = config.NetBiosHint + @"\";
         txtUsername.SelectionStart = txtUsername.Text.Length;
@@ -33,6 +34,34 @@ public partial class LoginForm : Form
 
         // Apply initial visibility — checkbox starts checked (SSO), so hide manual fields.
         UpdateCredentialFieldVisibility();
+    }
+
+    // ── DC reachability (quick, informational TCP probe — not a hard gate) ──────
+
+    private async Task CheckDcReachabilityAsync()
+    {
+        var eps = _config.Endpoints;
+        if (eps.Count == 0) return;
+
+        bool[] results;
+        try
+        {
+            results = await Task.WhenAll(eps.Select(ep =>
+                Task.Run(() => LdapService.TcpAlive(ep.Host, ep.Port, 1000))));
+        }
+        catch { return; }
+
+        if (IsDisposed) return;
+
+        int up = results.Count(r => r);
+        string suffix = up == eps.Count ? "  ✓ reachable"
+            : up == 0                   ? "  ✗ unreachable"
+            :                              $"  ⚠ {up}/{eps.Count} reachable";
+
+        lblServerValue.Text += suffix;
+        lblServerValue.ForeColor = up == eps.Count ? Color.FromArgb(30, 120, 30)
+            : up == 0                                ? Color.Firebrick
+            :                                           Color.FromArgb(170, 120, 0);
     }
 
     // ── SSO checkbox ─────────────────────────────────────────────────────────
