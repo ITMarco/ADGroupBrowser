@@ -5,6 +5,7 @@ partial class LoginForm
     private System.ComponentModel.IContainer components = null;
 
     private TableLayoutPanel root;
+    private PictureBox picLogo;
     private Label lblTitle;
     private Label lblServerLabel;
     private Label lblServerValue;
@@ -46,7 +47,7 @@ partial class LoginForm
         MinimizeBox     = false;
         Font            = new Font("Segoe UI", 9.5f);
         BackColor       = Color.White;
-        ClientSize      = new Size(470, 440);
+        ClientSize      = new Size(470, 484);
 
         // ── root table ────────────────────────────────────────────────────────
         root = new TableLayoutPanel
@@ -59,15 +60,35 @@ partial class LoginForm
         root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
 
-        // ── title ─────────────────────────────────────────────────────────────
+        // ── title row (logo + heading) ───────────────────────────────────────
+        var titleRow = new FlowLayoutPanel
+        {
+            AutoSize      = true,
+            WrapContents  = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin        = new Padding(0, 0, 0, 14),
+        };
+
+        picLogo = new PictureBox
+        {
+            Width    = 36,
+            Height   = 36,
+            SizeMode = PictureBoxSizeMode.Zoom,
+            Margin   = new Padding(0, 0, 10, 0),
+            Image    = AppIcon.LoadLogo(64),
+        };
+
         lblTitle = new Label
         {
             Text      = "Active Directory Group Browser",
             Font      = new Font("Segoe UI", 13.5f),
             ForeColor = brandBlue,
             AutoSize  = true,
-            Margin    = new Padding(0, 0, 0, 14),
+            Margin    = new Padding(0, 6, 0, 0),
         };
+
+        titleRow.Controls.Add(picLogo);
+        titleRow.Controls.Add(lblTitle);
 
         // ── server / domain info ──────────────────────────────────────────────
         lblServerLabel = new Label { Text = "Server:", AutoSize = true, ForeColor = Color.Gray,    Anchor = AnchorStyles.Left, Margin = new Padding(0, 3, 10, 3) };
@@ -148,15 +169,13 @@ partial class LoginForm
         btnRow = new TableLayoutPanel
         {
             Dock        = DockStyle.Fill,
-            ColumnCount = 4,
+            ColumnCount = 2,
             RowCount    = 1,
             AutoSize    = true,
             Margin      = new Padding(0, 6, 0, 0),
         };
         btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         btnConfig = new Button
         {
@@ -200,12 +219,25 @@ partial class LoginForm
         btnConnect.Click += btnConnect_Click;
         AcceptButton = btnConnect;
 
+        // Right-aligned action buttons in a non-wrapping FlowLayoutPanel so Connect
+        // never gets pushed onto its own row (same fix as the config editor's Save /
+        // Save As buttons).
+        var rightBtns = new FlowLayoutPanel
+        {
+            AutoSize      = true,
+            WrapContents  = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            Anchor        = AnchorStyles.Right,
+            Margin        = new Padding(0),
+        };
+        rightBtns.Controls.Add(btnExit);
+        rightBtns.Controls.Add(btnConnect);
+
         btnRow.Controls.Add(btnConfig, 0, 0);
-        btnRow.Controls.Add(btnExit,   2, 0);
-        btnRow.Controls.Add(btnConnect, 3, 0);
+        btnRow.Controls.Add(rightBtns, 1, 0);
 
         // ── assemble rows ─────────────────────────────────────────────────────
-        root.Controls.Add(lblTitle,          0, 0);  root.SetColumnSpan(lblTitle,          2);
+        root.Controls.Add(titleRow,          0, 0);  root.SetColumnSpan(titleRow,          2);
         root.Controls.Add(lblServerLabel,    0, 1);  root.Controls.Add(lblServerValue,    1, 1);
         root.Controls.Add(lblDomainLabel,    0, 2);  root.Controls.Add(lblDomainValue,    1, 2);
         root.Controls.Add(chkIntegrated,     0, 3);  root.SetColumnSpan(chkIntegrated,    2);

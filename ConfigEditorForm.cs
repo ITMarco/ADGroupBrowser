@@ -344,7 +344,7 @@ public sealed class ConfigEditorForm : Form
         };
 
         // Buttons row
-        var ouBtns = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0) };
+        var ouBtns = new FlowLayoutPanel { AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0) };
         _btnOUAdd = MakeSmallButton("Add");
         _btnOUAdd.Click += (_, _) =>
         {
@@ -460,7 +460,7 @@ public sealed class ConfigEditorForm : Form
         entryRow.Controls.Add(_txtGroup, 1, 0);
 
         // Buttons row
-        var groupBtns = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0) };
+        var groupBtns = new FlowLayoutPanel { AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0) };
         _btnGroupAdd = MakeSmallButton("Add");
         _btnGroupAdd.Click += (_, _) =>
         {

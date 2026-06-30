@@ -173,15 +173,7 @@ static class Program
         }
     }
 
-    private static Icon? LoadAppIcon()
-    {
-        try
-        {
-            using var s = typeof(Program).Assembly.GetManifestResourceStream("ADGroupBrowser.app.ico");
-            return s is not null ? new Icon(s) : null;
-        }
-        catch { return null; }
-    }
+    private static Icon? LoadAppIcon() => AppIcon.Load();
 
     private static void ShowCrash(Exception ex)
     {

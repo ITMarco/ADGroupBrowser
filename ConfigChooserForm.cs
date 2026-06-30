@@ -101,7 +101,7 @@ public sealed class ConfigChooserForm : Form
 
         var rightButtons = new FlowLayoutPanel
         {
-            AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0),
+            AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0),
         };
         _btnExit.Text = "Exit";
         _btnExit.AutoSize = true;
