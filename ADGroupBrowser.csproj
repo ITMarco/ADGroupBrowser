@@ -7,9 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Real per-monitor v2 DPI awareness; applied by ApplicationConfiguration.Initialize() -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.1.0</Version>
-    <AssemblyVersion>1.1.0</AssemblyVersion>
-    <FileVersion>1.1.0</FileVersion>
+    <Version>1.2.0</Version>
+    <AssemblyVersion>1.2.0</AssemblyVersion>
+    <FileVersion>1.2.0</FileVersion>
     <Product>AD Group Browser</Product>
     <Company>ITMarco</Company>
     <Copyright>© 2026 ITMarco</Copyright>
